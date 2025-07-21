@@ -96,14 +96,17 @@ age_range = st.sidebar.slider(
     min_value=int(df['AGE'].min()),
     max_value=int(df['AGE'].max()),
     value=(int(df['AGE'].min()), int(df['AGE'].max()))
+)
 gender_filter = st.sidebar.multiselect(
     "Gender",
     options=df['GENDER'].unique(),
-    default=df['GENDER'].unique())
+    default=df['GENDER'].unique()
+)
 group_filter = st.sidebar.multiselect(
     "Treatment Group",
     options=df['GROUP_NAME'].unique(),
-    default=df['GROUP_NAME'].unique())
+    default=df['GROUP_NAME'].unique()
+)
 
 # Apply filters
 filtered_df = df[
