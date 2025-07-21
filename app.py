@@ -1,199 +1,3 @@
-# import streamlit as st
-# import pandas as pd
-# import numpy as np
-# import plotly.express as px
-# import plotly.graph_objects as go
-# from scipy import stats
-
-# # ========== PAGE CONFIG ==========
-# st.set_page_config(
-#     page_title="Knee OA Treatment Comparison",
-#     page_icon="🦵",
-#     layout="wide",
-#     initial_sidebar_state="expanded"
-# )
-
-# # ========== DATA LOADING ==========
-# @st.cache_data
-# def load_data():
-#     try:
-#         df = pd.read_excel("RESEARCH_DATA.xlsx")
-#         df.columns = df.columns.str.strip().str.upper()  # Standardize column names
-        
-#         # Ensure required columns exist
-#         required_cols = ['GROUP', 'AROM_1_F', 'AROM_2_F', 'PROM_1_F', 'PROM_2_F',
-#                         'VAS_1', 'VAS_2', 'W_P_1', 'W_P_2', 'W_S_1', 'W_S_2', 'W_D_1', 'W_D_2']
-#         missing = [col for col in required_cols if col not in df.columns]
-        
-#         if missing:
-#             st.error(f"Missing columns: {', '.join(missing)}")
-#             return None
-        
-#         return df
-    
-#     except Exception as e:
-#         st.error(f"Error loading data: {str(e)}")
-#         return None
-
-# df = load_data()
-# if df is None:
-#     st.stop()
-
-# # ========== DATA PREP ==========
-# df['GROUP'] = df['GROUP'].map({1: 'Maitland + Conventional', 2: 'Conventional Alone'})
-
-# # Define metrics for analysis
-# metrics = {
-#     'AROM': {'pre': 'AROM_1_F', 'post': 'AROM_2_F', 'title': 'Active ROM (Flexion)', 'unit': '°'},
-#     'PROM': {'pre': 'PROM_1_F', 'post': 'PROM_2_F', 'title': 'Passive ROM (Flexion)', 'unit': '°'},
-#     'VAS': {'pre': 'VAS_1', 'post': 'VAS_2', 'title': 'Pain (VAS)', 'unit': '0-10'},
-#     'WOMAC_P': {'pre': 'W_P_1', 'post': 'W_P_2', 'title': 'WOMAC Pain', 'unit': 'Score'},
-#     'WOMAC_S': {'pre': 'W_S_1', 'post': 'W_S_2', 'title': 'WOMAC Stiffness', 'unit': 'Score'},
-#     'WOMAC_D': {'pre': 'W_D_1', 'post': 'W_D_2', 'title': 'WOMAC Disability', 'unit': 'Score'}
-# }
-
-# # Calculate improvement
-# for metric in metrics:
-#     pre, post = metrics[metric]['pre'], metrics[metric]['post']
-#     df[f'{metric}_improvement'] = ((df[post] - df[pre]) / df[pre].replace(0, 0.001)) * 100
-
-# # ========== SIDEBAR FILTERS ==========
-# st.sidebar.header("🔍 Filters")
-# selected_metric = st.sidebar.selectbox(
-#     "Select Metric", 
-#     list(metrics.keys()),
-#     format_func=lambda x: metrics[x]['title']
-# )
-
-# # Age filter (if column exists)
-# if 'AGE' in df.columns:
-#     age_min, age_max = int(df['AGE'].min()), int(df['AGE'].max())
-#     age_range = st.sidebar.slider("Age Range", age_min, age_max, (age_min, age_max))
-# else:
-#     age_range = (0, 100)  # Default if no age data
-
-# # Gender filter (if column exists)
-# gender_options = df['GENDER'].unique() if 'GENDER' in df.columns else []
-# gender_filter = st.sidebar.multiselect("Gender", gender_options, default=gender_options)
-
-# # Duration filter
-# duration_min, duration_max = int(df['DURATION'].min()), int(df['DURATION'].max())
-# duration_range = st.sidebar.slider("Treatment Duration (weeks)", duration_min, duration_max, (duration_min, duration_max))
-
-# # Apply filters
-# filter_conditions = [
-#     (df['DURATION'] >= duration_range[0]) & (df['DURATION'] <= duration_range[1])
-# ]
-
-# if 'AGE' in df.columns:
-#     filter_conditions.append((df['AGE'] >= age_range[0]) & (df['AGE'] <= age_range[1]))
-
-# if 'GENDER' in df.columns and gender_filter:
-#     filter_conditions.append(df['GENDER'].isin(gender_filter))
-
-# filtered_df = df[np.all(filter_conditions, axis=0)] if filter_conditions else df
-
-# # ========== MAIN DASHBOARD ==========
-# st.title("🧬 Knee Osteoarthritis Treatment Comparison")
-# st.markdown("""
-# - **Group 1**: Maitland Mobilization + Conventional Therapy  
-# - **Group 2**: Conventional Therapy Alone  
-# """)
-
-# # Key Metrics
-# col1, col2, col3 = st.columns(3)
-# col1.metric("Total Patients", len(filtered_df))
-# avg_improve = filtered_df[f'{selected_metric}_improvement'].mean()
-# col2.metric(f"Avg Improvement ({metrics[selected_metric]['title']})", f"{avg_improve:.1f}%")
-
-# group_diff = (
-#     filtered_df[filtered_df['GROUP'] == 'Maitland + Conventional'][f'{selected_metric}_improvement'].mean() -
-#     filtered_df[filtered_df['GROUP'] == 'Conventional Alone'][f'{selected_metric}_improvement'].mean()
-# )
-# col3.metric("Difference (Maitland vs Conventional)", f"{group_diff:.1f}%")
-
-# # ========== VISUALIZATIONS ==========
-# tab1, tab2, tab3 = st.tabs(["📊 Pre-Post Comparison", "📈 Improvement Analysis", "📉 Statistical Tests"])
-
-# with tab1:
-#     # Pre-Post Violin Plot
-#     fig = go.Figure()
-#     for group in filtered_df['GROUP'].unique():
-#         group_data = filtered_df[filtered_df['GROUP'] == group]
-#         fig.add_trace(go.Violin(
-#             x=['Pre-Test'] * len(group_data),
-#             y=group_data[metrics[selected_metric]['pre']],
-#             name=f'{group} (Pre)',
-#             box_visible=True,
-#             line_color='blue' if group == 'Maitland + Conventional' else 'red'
-#         ))
-#         fig.add_trace(go.Violin(
-#             x=['Post-Test'] * len(group_data),
-#             y=group_data[metrics[selected_metric]['post']],
-#             name=f'{group} (Post)',
-#             box_visible=True,
-#             line_color='lightblue' if group == 'Maitland + Conventional' else 'pink'
-#         ))
-#     fig.update_layout(title=f"Pre vs Post {metrics[selected_metric]['title']}", height=500)
-#     st.plotly_chart(fig, use_container_width=True)
-
-# with tab2:
-#     # Improvement by Group
-#     fig = px.box(
-#         filtered_df, 
-#         x='GROUP', 
-#         y=f'{selected_metric}_improvement',
-#         color='GROUP',
-#         title=f"Improvement in {metrics[selected_metric]['title']}",
-#         labels={'GROUP': 'Treatment Group', f'{selected_metric}_improvement': 'Improvement (%)'},
-#         color_discrete_map={'Maitland + Conventional': 'blue', 'Conventional Alone': 'red'}
-#     )
-#     st.plotly_chart(fig, use_container_width=True)
-
-# with tab3:
-#     # Statistical Tests
-#     st.subheader("🔬 Hypothesis Testing")
-#     group1 = filtered_df[filtered_df['GROUP'] == 'Maitland + Conventional']
-#     group2 = filtered_df[filtered_df['GROUP'] == 'Conventional Alone']
-    
-#     # Normality Check
-#     _, p1 = stats.shapiro(group1[f'{selected_metric}_improvement'])
-#     _, p2 = stats.shapiro(group2[f'{selected_metric}_improvement'])
-    
-#     if p1 > 0.05 and p2 > 0.05:
-#         # t-test if normal
-#         t_stat, p_val = stats.ttest_ind(
-#             group1[f'{selected_metric}_improvement'],
-#             group2[f'{selected_metric}_improvement']
-#         )
-#         test_used = "Independent t-test"
-#     else:
-#         # Mann-Whitney if non-normal
-#         u_stat, p_val = stats.mannwhitneyu(
-#             group1[f'{selected_metric}_improvement'],
-#             group2[f'{selected_metric}_improvement']
-#         )
-#         test_used = "Mann-Whitney U Test"
-    
-#     st.write(f"**Test Used:** {test_used}")
-#     st.write(f"**p-value:** {p_val:.4f} {'(Significant)' if p_val < 0.05 else '(Not Significant)'}")
-    
-#     # Effect Size
-#     cohen_d = (group1[f'{selected_metric}_improvement'].mean() - group2[f'{selected_metric}_improvement'].mean()) / np.sqrt(
-#         (group1[f'{selected_metric}_improvement'].std()**2 + group2[f'{selected_metric}_improvement'].std()**2) / 2
-#     )
-#     st.write(f"**Effect Size (Cohen's d):** {cohen_d:.2f}")
-
-# # ========== DATA EXPORT ==========
-# st.download_button(
-#     "📥 Download Filtered Data (CSV)",
-#     filtered_df.to_csv(index=False).encode('utf-8'),
-#     "knee_oa_filtered_data.csv",
-#     "text/csv"
-# )
-
-
-
 # app.py
 import streamlit as st
 import pandas as pd
@@ -204,30 +8,48 @@ from plotly.subplots import make_subplots
 
 # ========== PAGE CONFIG ==========
 st.set_page_config(
-    page_title="Knee OA Treatment Comparison Dashboard",
-    page_icon="🦵",
+    page_title="Knee OA Treatment Outcomes Dashboard",
+    page_icon=":hospital:",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
+# Custom CSS for professional styling
 st.markdown("""
 <style>
-    .metric-box {
-        background-color: #f0f2f6;
+    .main {
+        background-color: #f8f9fa;
+    }
+    .metric-card {
+        background-color: white;
         border-radius: 10px;
         padding: 15px;
         margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
     .header-text {
-        font-size: 1.2rem;
-        font-weight: bold;
-        color: #1f77b4;
-        margin-bottom: 10px;
+        font-size: 1.4rem;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 15px;
     }
-    .stPlotlyChart {
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    .section-title {
+        font-size: 1.3rem;
+        font-weight: 600;
+        color: #3498db;
+        border-bottom: 2px solid #3498db;
+        padding-bottom: 5px;
+        margin-top: 25px;
+    }
+    .sidebar .sidebar-content {
+        background-color: #2c3e50;
+        color: white;
+    }
+    .st-bb {
+        background-color: white;
+    }
+    .st-at {
+        background-color: #2980b9;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -243,11 +65,6 @@ def load_data():
         required_cols = ['GROUP', 'AROM_1_F', 'AROM_2_F', 'PROM_1_F', 'PROM_2_F',
                         'VAS_1', 'VAS_2', 'W_P_1', 'W_P_2', 'W_S_1', 'W_S_2', 
                         'W_D_1', 'W_D_2', 'AGE', 'GENDER', 'DURATION']
-        
-        # Check for missing columns but don't stop execution
-        missing = [col for col in required_cols if col not in df.columns]
-        if missing:
-            st.warning(f"Note: Some expected columns not found - {', '.join(missing)}")
         
         return df
     
@@ -272,21 +89,23 @@ metrics = {
     'WOMAC_D': {'pre': 'W_D_1', 'post': 'W_D_2', 'title': 'WOMAC Disability', 'unit': 'Score', 'direction': 'decrease'}
 }
 
-# Calculate absolute and percentage change
+# Calculate changes
 for metric in metrics:
     pre_col = metrics[metric]['pre']
     post_col = metrics[metric]['post']
     
     df[f'{metric}_CHANGE'] = df[post_col] - df[pre_col]
     df[f'{metric}_PCT_CHANGE'] = ((df[post_col] - df[pre_col]) / df[pre_col].replace(0, 0.001)) * 100
+    df[f'{metric}_IMPROVED'] = df[f'{metric}_CHANGE'] > 0 if metrics[metric]['direction'] == 'increase' else df[f'{metric}_CHANGE'] < 0
 
-# ========== SIDEBAR FILTERS ==========
-st.sidebar.header("🔍 Filters")
+# ========== SIDEBAR ==========
+st.sidebar.header("🔍 Filter Controls")
+st.sidebar.markdown("Customize the data view using these filters:")
 
 # Age filter
 if 'AGE' in df.columns:
     age_min, age_max = int(df['AGE'].min()), int(df['AGE'].max())
-    selected_age = st.sidebar.slider("Select Age Range", age_min, age_max, (age_min, age_max))
+    selected_age = st.sidebar.slider("Patient Age Range", age_min, age_max, (age_min, age_max))
 else:
     selected_age = (0, 100)
 
@@ -304,6 +123,13 @@ if 'DURATION' in df.columns:
 else:
     selected_duration = (0, 20)
 
+# Group filter
+selected_groups = st.sidebar.multiselect(
+    "Select Treatment Groups",
+    df['GROUP'].unique(),
+    default=df['GROUP'].unique()
+)
+
 # Apply filters
 filter_conditions = []
 if 'AGE' in df.columns:
@@ -312,20 +138,46 @@ if 'GENDER' in df.columns and selected_genders:
     filter_conditions.append(df['GENDER'].isin(selected_genders))
 if 'DURATION' in df.columns:
     filter_conditions.append((df['DURATION'] >= selected_duration[0]) & (df['DURATION'] <= selected_duration[1]))
+if selected_groups:
+    filter_conditions.append(df['GROUP'].isin(selected_groups))
 
 filtered_df = df.copy()
 if filter_conditions:
     filtered_df = df[np.all(filter_conditions, axis=0)]
 
 # ========== MAIN DASHBOARD ==========
-st.title("🦵 Knee Osteoarthritis Treatment Outcomes")
+st.title("🦵 Knee Osteoarthritis Treatment Outcomes Dashboard")
 st.markdown("""
-Comparing **Maitland Mobilization + Conventional Therapy** vs **Conventional Therapy Alone**  
-*Data analyzed from pre-test to post-test measurements*
+**Comparative analysis of Maitland Mobilization + Conventional Therapy vs Conventional Therapy Alone**  
+*Evaluating pre-test to post-test changes across key clinical measures*
 """)
 
-# ========== GROUP COMPARISON ==========
-st.header("📊 Treatment Group Comparison")
+# ===== KEY METRICS =====
+st.markdown('<div class="section-title">📊 Key Treatment Outcomes</div>', unsafe_allow_html=True)
+
+metric_cols = st.columns(3)
+with metric_cols[0]:
+    st.markdown('<div class="metric-card">'
+                '<h3>Total Patients</h3>'
+                f'<p style="font-size: 2rem; color: #2980b9;">{len(filtered_df)}</p>'
+                '</div>', unsafe_allow_html=True)
+    
+with metric_cols[1]:
+    avg_improve_arom = filtered_df['AROM_CHANGE'].mean()
+    st.markdown('<div class="metric-card">'
+                '<h3>Avg AROM Improvement</h3>'
+                f'<p style="font-size: 2rem; color: #2980b9;">{avg_improve_arom:.1f}°</p>'
+                '</div>', unsafe_allow_html=True)
+    
+with metric_cols[2]:
+    avg_improve_vas = filtered_df['VAS_CHANGE'].mean()
+    st.markdown('<div class="metric-card">'
+                '<h3>Avg Pain Reduction</h3>'
+                f'<p style="font-size: 2rem; color: #2980b9;">{abs(avg_improve_vas):.1f} points</p>'
+                '</div>', unsafe_allow_html=True)
+
+# ===== COMPREHENSIVE COMPARISON =====
+st.markdown('<div class="section-title">📈 Treatment Group Comparison</div>', unsafe_allow_html=True)
 
 # Create tabs for each metric
 tabs = st.tabs([metrics[metric]['title'] for metric in metrics])
@@ -335,59 +187,74 @@ for i, metric in enumerate(metrics):
         col1, col2 = st.columns(2)
         
         with col1:
-            # Pre-Post Comparison by Group
-            fig = px.box(
+            # Pre-Post Parallel Coordinates Plot
+            fig = px.parallel_categories(
                 filtered_df,
-                x='GROUP',
-                y=[metrics[metric]['pre'], metrics[metric]['post']],
+                dimensions=['GROUP', metrics[metric]['pre'], metrics[metric]['post']],
                 color='GROUP',
-                labels={'value': f"{metrics[metric]['title']} ({metrics[metric]['unit']})", 'variable': 'Test'},
-                title=f"Pre vs Post {metrics[metric]['title']} by Group",
-                color_discrete_map={'Maitland + Conventional': '#636EFA', 'Conventional Alone': '#EF553B'}
-            )
-            fig.update_layout(
-                boxmode='group',
-                legend_title_text='Treatment Group',
-                yaxis_title=f"{metrics[metric]['title']} ({metrics[metric]['unit']})"
+                title=f"Pre-Post {metrics[metric]['title']} Distribution",
+                color_discrete_map={'Maitland + Conventional': '#3498db', 'Conventional Alone': '#e74c3c'}
             )
             st.plotly_chart(fig, use_container_width=True)
             
+            # Improvement Summary
+            group_stats = filtered_df.groupby('GROUP').agg({
+                metrics[metric]['pre']: ['mean', 'std'],
+                metrics[metric]['post']: ['mean', 'std'],
+                f'{metric}_CHANGE': ['mean', 'std', 'count']
+            }).reset_index()
+            
+            st.markdown(f"**{metrics[metric]['title']} Improvement Summary**")
+            st.dataframe(
+                group_stats.style.format({
+                    metrics[metric]['pre']: '{:.1f}',
+                    metrics[metric]['post']: '{:.1f}',
+                    f'{metric}_CHANGE': '{:.1f}'
+                }).background_gradient(cmap='Blues'),
+                use_container_width=True
+            )
+        
         with col2:
-            # Change Distribution by Group
+            # Pre-Post Scatter Plot with Reference Line
+            fig = px.scatter(
+                filtered_df,
+                x=metrics[metric]['pre'],
+                y=metrics[metric]['post'],
+                color='GROUP',
+                trendline="ols",
+                title=f"Pre vs Post {metrics[metric]['title']} Comparison",
+                labels={
+                    metrics[metric]['pre']: f"Pre-Test {metrics[metric]['title']} ({metrics[metric]['unit']})",
+                    metrics[metric]['post']: f"Post-Test {metrics[metric]['title']} ({metrics[metric]['unit']})"
+                },
+                color_discrete_map={'Maitland + Conventional': '#3498db', 'Conventional Alone': '#e74c3c'}
+            )
+            fig.add_shape(
+                type="line", line=dict(dash='dash', color='grey'),
+                x0=filtered_df[metrics[metric]['pre']].min(),
+                y0=filtered_df[metrics[metric]['pre']].min(),
+                x1=filtered_df[metrics[metric]['pre']].max(),
+                y1=filtered_df[metrics[metric]['pre']].max()
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Improvement Distribution
             fig = px.box(
                 filtered_df,
                 x='GROUP',
                 y=f'{metric}_CHANGE',
                 color='GROUP',
-                labels={'value': f"Change in {metrics[metric]['title']} ({metrics[metric]['unit']})"},
-                title=f"Improvement in {metrics[metric]['title']}",
-                color_discrete_map={'Maitland + Conventional': '#636EFA', 'Conventional Alone': '#EF553B'}
+                points="all",
+                title=f"Improvement Distribution - {metrics[metric]['title']}",
+                color_discrete_map={'Maitland + Conventional': '#3498db', 'Conventional Alone': '#e74c3c'}
             )
             fig.update_layout(
                 yaxis_title=f"Change in {metrics[metric]['title']} ({metrics[metric]['unit']})"
             )
             st.plotly_chart(fig, use_container_width=True)
-            
-        # Group statistics
-        group_stats = filtered_df.groupby('GROUP').agg({
-            metrics[metric]['pre']: ['mean', 'std'],
-            metrics[metric]['post']: ['mean', 'std'],
-            f'{metric}_CHANGE': ['mean', 'std', 'count']
-        }).reset_index()
-        
-        # Format the statistics table
-        group_stats.columns = ['Group', 'Pre Mean', 'Pre Std', 'Post Mean', 'Post Std', 
-                             'Change Mean', 'Change Std', 'Patient Count']
-        group_stats['Improvement'] = group_stats['Change Mean'].apply(lambda x: f"{x:.2f} {metrics[metric]['unit']}")
-        
-        st.markdown("### Group Statistics")
-        st.dataframe(group_stats[['Group', 'Pre Mean', 'Post Mean', 'Improvement', 'Patient Count']].style.format({
-            'Pre Mean': '{:.2f}',
-            'Post Mean': '{:.2f}'
-        }), use_container_width=True)
 
-# ========== INDIVIDUAL METRIC TRENDS ==========
-st.header("📈 Detailed Metric Trends")
+# ===== PATIENT OUTCOMES =====
+st.markdown('<div class="section-title">👥 Patient-Level Outcomes</div>', unsafe_allow_html=True)
 
 # Select metric for detailed view
 selected_metric = st.selectbox(
@@ -397,71 +264,64 @@ selected_metric = st.selectbox(
     key='detailed_metric'
 )
 
-# Create detailed view
 col1, col2 = st.columns(2)
 
 with col1:
-    # Scatter plot of pre vs post with trend lines
-    fig = px.scatter(
-        filtered_df,
-        x=metrics[selected_metric]['pre'],
-        y=metrics[selected_metric]['post'],
-        color='GROUP',
-        trendline="ols",
-        title=f"Pre vs Post {metrics[selected_metric]['title']} with Trendlines",
-        labels={
-            metrics[selected_metric]['pre']: f"Pre-Test {metrics[selected_metric]['title']}",
-            metrics[selected_metric]['post']: f"Post-Test {metrics[selected_metric]['title']}"
-        },
-        color_discrete_map={'Maitland + Conventional': '#636EFA', 'Conventional Alone': '#EF553B'}
+    # Individual Patient Progress
+    fig = px.line(
+        filtered_df.melt(
+            id_vars=['PATIENT_NAME', 'GROUP'],
+            value_vars=[metrics[selected_metric]['pre'], metrics[selected_metric]['post']],
+            var_name='Test',
+            value_name='Value'
+        ),
+        x='Test',
+        y='Value',
+        color='PATIENT_NAME',
+        facet_col='GROUP',
+        title=f"Individual Patient Progress - {metrics[selected_metric]['title']}",
+        labels={'Value': f"{metrics[selected_metric]['title']} ({metrics[selected_metric]['unit']})"}
     )
-    fig.add_shape(
-        type="line", line=dict(dash='dash'),
-        x0=filtered_df[metrics[selected_metric]['pre']].min(),
-        y0=filtered_df[metrics[selected_metric]['pre']].min(),
-        x1=filtered_df[metrics[selected_metric]['pre']].max(),
-        y1=filtered_df[metrics[selected_metric]['pre']].max()
-    )
+    fig.update_layout(showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
 
 with col2:
-    # Histogram of changes
-    fig = px.histogram(
-        filtered_df,
-        x=f'{selected_metric}_CHANGE',
+    # Response Rate by Group
+    response_rates = filtered_df.groupby(['GROUP', f'{selected_metric}_IMPROVED']).size().unstack().fillna(0)
+    response_rates['Response Rate'] = response_rates[True] / (response_rates[True] + response_rates[False]) * 100
+    
+    fig = px.bar(
+        response_rates.reset_index(),
+        x='GROUP',
+        y='Response Rate',
         color='GROUP',
-        nbins=20,
-        barmode='overlay',
-        title=f"Distribution of Changes in {metrics[selected_metric]['title']}",
-        labels={f'{selected_metric}_CHANGE': f"Change in {metrics[selected_metric]['title']} ({metrics[selected_metric]['unit']})"},
-        color_discrete_map={'Maitland + Conventional': '#636EFA', 'Conventional Alone': '#EF553B'}
-    )
-    fig.update_layout(
-        bargap=0.1,
-        xaxis_title=f"Change in {metrics[selected_metric]['title']} ({metrics[selected_metric]['unit']})"
+        title=f"Response Rate - {metrics[selected_metric]['title']}",
+        labels={'Response Rate': 'Percentage of Patients with Improvement'},
+        color_discrete_map={'Maitland + Conventional': '#3498db', 'Conventional Alone': '#e74c3c'}
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# ========== PATIENT DEMOGRAPHICS ==========
-st.header("👥 Patient Demographics")
+# ===== DEMOGRAPHICS =====
+st.markdown('<div class="section-title">📋 Patient Demographics</div>', unsafe_allow_html=True)
 
 if 'AGE' in df.columns and 'GENDER' in df.columns:
     col1, col2 = st.columns(2)
     
     with col1:
-        # Age distribution by group
+        # Age Distribution
         fig = px.histogram(
             filtered_df,
             x='AGE',
             color='GROUP',
-            nbins=10,
+            nbins=15,
+            barmode='overlay',
             title="Age Distribution by Treatment Group",
-            color_discrete_map={'Maitland + Conventional': '#636EFA', 'Conventional Alone': '#EF553B'}
+            color_discrete_map={'Maitland + Conventional': '#3498db', 'Conventional Alone': '#e74c3c'}
         )
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        # Gender distribution by group
+        # Gender Distribution
         gender_counts = filtered_df.groupby(['GROUP', 'GENDER']).size().reset_index(name='Count')
         fig = px.bar(
             gender_counts,
@@ -473,11 +333,12 @@ if 'AGE' in df.columns and 'GENDER' in df.columns:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-# ========== DATA EXPORT ==========
+# ===== DATA EXPORT =====
+st.markdown('<div class="section-title">💾 Data Export</div>', unsafe_allow_html=True)
 st.download_button(
     "📥 Download Filtered Data as CSV",
     filtered_df.to_csv(index=False).encode('utf-8'),
-    "knee_oa_treatment_data.csv",
+    "knee_oa_treatment_outcomes.csv",
     "text/csv",
     key='download-csv'
 )
