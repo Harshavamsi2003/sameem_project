@@ -5,302 +5,189 @@ import plotly.express as px
 import plotly.graph_objects as go
 from scipy import stats
 
-# Page configuration
+# ========== PAGE CONFIG ==========
 st.set_page_config(
-    page_title="Knee OA Treatment Analytics",
+    page_title="Knee OA Treatment Comparison",
     page_icon="🦵",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Load data
+# ========== DATA LOADING ==========
 @st.cache_data
 def load_data():
-    return pd.read_excel("RESEARCH_DATA.xlsx")
+    try:
+        df = pd.read_excel("RESEARCH_DATA.xlsx")
+        df.columns = df.columns.str.strip().str.upper()  # Standardize column names
+        
+        # Ensure required columns exist
+        required_cols = ['GROUP', 'AROM_1_F', 'AROM_2_F', 'PROM_1_F', 'PROM_2_F',
+                        'VAS_1', 'VAS_2', 'W_P_1', 'W_P_2', 'W_S_1', 'W_S_2', 'W_D_1', 'W_D_2']
+        missing = [col for col in required_cols if col not in df.columns]
+        
+        if missing:
+            st.error(f"Missing columns: {', '.join(missing)}")
+            return None
+        
+        return df
+    
+    except Exception as e:
+        st.error(f"Error loading data: {str(e)}")
+        return None
 
 df = load_data()
+if df is None:
+    st.stop()
 
-# Data cleaning and preparation
+# ========== DATA PREP ==========
 df['GROUP'] = df['GROUP'].map({1: 'Maitland + Conventional', 2: 'Conventional Alone'})
 
-# Define metrics
+# Define metrics for analysis
 metrics = {
-    'AROM': {
-        'pre': ['AROM_1_F', 'AROM_1_E'],
-        'post': ['AROM_2_F', 'AROM_2_E'],
-        'title': 'Active Range of Motion',
-        'y_label': 'Degrees'
-    },
-    'PROM': {
-        'pre': ['PROM_1_F', 'PROM_1_E'],
-        'post': ['PROM_2_F', 'PROM_2_E'],
-        'title': 'Passive Range of Motion',
-        'y_label': 'Degrees'
-    },
-    'VAS': {
-        'pre': ['VAS_1'],
-        'post': ['VAS_2'],
-        'title': 'Visual Analogue Scale (Pain)',
-        'y_label': 'Score (0-10)'
-    },
-    'WOMAC_P': {
-        'pre': ['W_P_1'],
-        'post': ['W_P_2'],
-        'title': 'WOMAC Pain',
-        'y_label': 'Score'
-    },
-    'WOMAC_S': {
-        'pre': ['W_S_1'],
-        'post': ['W_S_2'],
-        'title': 'WOMAC Stiffness',
-        'y_label': 'Score'
-    },
-    'WOMAC_D': {
-        'pre': ['W_D_1'],
-        'post': ['W_D_2'],
-        'title': 'WOMAC Disability',
-        'y_label': 'Score'
-    }
+    'AROM': {'pre': 'AROM_1_F', 'post': 'AROM_2_F', 'title': 'Active ROM (Flexion)', 'unit': '°'},
+    'PROM': {'pre': 'PROM_1_F', 'post': 'PROM_2_F', 'title': 'Passive ROM (Flexion)', 'unit': '°'},
+    'VAS': {'pre': 'VAS_1', 'post': 'VAS_2', 'title': 'Pain (VAS)', 'unit': '0-10'},
+    'WOMAC_P': {'pre': 'W_P_1', 'post': 'W_P_2', 'title': 'WOMAC Pain', 'unit': 'Score'},
+    'WOMAC_S': {'pre': 'W_S_1', 'post': 'W_S_2', 'title': 'WOMAC Stiffness', 'unit': 'Score'},
+    'WOMAC_D': {'pre': 'W_D_1', 'post': 'W_D_2', 'title': 'WOMAC Disability', 'unit': 'Score'}
 }
 
-# Calculate improvement percentages
-for metric, cols in metrics.items():
-    pre_col = cols['pre'][0]  # Taking first column if multiple
-    post_col = cols['post'][0]
-    df[f'{metric}_improvement'] = ((df[post_col] - df[pre_col]) / df[pre_col]) * 100
+# Calculate improvement
+for metric in metrics:
+    pre, post = metrics[metric]['pre'], metrics[metric]['post']
+    df[f'{metric}_improvement'] = ((df[post] - df[pre]) / df[pre].replace(0, 0.001)) * 100
 
-# Sidebar filters
-st.sidebar.header("Filters")
+# ========== SIDEBAR FILTERS ==========
+st.sidebar.header("🔍 Filters")
 selected_metric = st.sidebar.selectbox(
-    "Select Metric to Analyze",
+    "Select Metric", 
     list(metrics.keys()),
     format_func=lambda x: metrics[x]['title']
 )
 
-age_range = st.sidebar.slider(
-    "Select Age Range",
-    min_value=int(df['AGE'].min()),
-    max_value=int(df['AGE'].max()),
-    value=(int(df['AGE'].min()), int(df['AGE'].max()))
-)
+# Age filter (if column exists)
+if 'AGE' in df.columns:
+    age_min, age_max = int(df['AGE'].min()), int(df['AGE'].max())
+    age_range = st.sidebar.slider("Age Range", age_min, age_max, (age_min, age_max))
+else:
+    age_range = (0, 100)  # Default if no age data
 
-gender_filter = st.sidebar.multiselect(
-    "Filter by Gender",
-    options=df['GENDER'].unique(),
-    default=df['GENDER'].unique()
-)
+# Gender filter (if column exists)
+gender_options = df['GENDER'].unique() if 'GENDER' in df.columns else []
+gender_filter = st.sidebar.multiselect("Gender", gender_options, default=gender_options)
 
-duration_filter = st.sidebar.slider(
-    "Treatment Duration (weeks)",
-    min_value=int(df['DURATION'].min()),
-    max_value=int(df['DURATION'].max()),
-    value=(int(df['DURATION'].min()), int(df['DURATION'].max()))
-)
+# Duration filter
+duration_min, duration_max = int(df['DURATION'].min()), int(df['DURATION'].max())
+duration_range = st.sidebar.slider("Treatment Duration (weeks)", duration_min, duration_max, (duration_min, duration_max))
 
 # Apply filters
-filtered_df = df[
-    (df['AGE'] >= age_range[0]) & 
-    (df['AGE'] <= age_range[1]) &
-    (df['GENDER'].isin(gender_filter)) &
-    (df['DURATION'] >= duration_filter[0]) &
-    (df['DURATION'] <= duration_filter[1])
+filter_conditions = [
+    (df['DURATION'] >= duration_range[0]) & (df['DURATION'] <= duration_range[1])
 ]
 
-# Main content
-st.title("Knee Osteoarthritis Treatment Outcomes Dashboard")
+if 'AGE' in df.columns:
+    filter_conditions.append((df['AGE'] >= age_range[0]) & (df['AGE'] <= age_range[1]))
+
+if 'GENDER' in df.columns and gender_filter:
+    filter_conditions.append(df['GENDER'].isin(gender_filter))
+
+filtered_df = df[np.all(filter_conditions, axis=0)] if filter_conditions else df
+
+# ========== MAIN DASHBOARD ==========
+st.title("🧬 Knee Osteoarthritis Treatment Comparison")
 st.markdown("""
-Comparing outcomes between:
-- **Group 1**: Maitland mobilization + Conventional therapy
-- **Group 2**: Conventional therapy alone
+- **Group 1**: Maitland Mobilization + Conventional Therapy  
+- **Group 2**: Conventional Therapy Alone  
 """)
 
-# Key metrics overview
-st.subheader("Overall Treatment Effectiveness")
+# Key Metrics
 col1, col2, col3 = st.columns(3)
+col1.metric("Total Patients", len(filtered_df))
+avg_improve = filtered_df[f'{selected_metric}_improvement'].mean()
+col2.metric(f"Avg Improvement ({metrics[selected_metric]['title']})", f"{avg_improve:.1f}%")
 
-with col1:
-    st.metric("Total Patients", len(filtered_df))
-    
-with col2:
-    avg_improvement = filtered_df[f'{selected_metric}_improvement'].mean()
-    st.metric(
-        f"Avg {metrics[selected_metric]['title']} Improvement", 
-        f"{avg_improvement:.1f}%",
-        delta=f"{(avg_improvement - df[f'{selected_metric}_improvement'].mean()):.1f}% vs unfiltered"
-    )
+group_diff = (
+    filtered_df[filtered_df['GROUP'] == 'Maitland + Conventional'][f'{selected_metric}_improvement'].mean() -
+    filtered_df[filtered_df['GROUP'] == 'Conventional Alone'][f'{selected_metric}_improvement'].mean()
+)
+col3.metric("Difference (Maitland vs Conventional)", f"{group_diff:.1f}%")
 
-with col3:
-    group_comparison = filtered_df.groupby('GROUP')[f'{selected_metric}_improvement'].mean()
-    st.metric(
-        "Group Difference", 
-        f"{(group_comparison['Maitland + Conventional'] - group_comparison['Conventional Alone']):.1f}%",
-        delta="Maitland vs Conventional"
-    )
-
-# Visualization section
-st.subheader(f"{metrics[selected_metric]['title']} Analysis")
-
-tab1, tab2, tab3, tab4 = st.tabs(["Pre-Post Comparison", "Improvement by Group", "Demographic Analysis", "Statistical Tests"])
+# ========== VISUALIZATIONS ==========
+tab1, tab2, tab3 = st.tabs(["📊 Pre-Post Comparison", "📈 Improvement Analysis", "📉 Statistical Tests"])
 
 with tab1:
-    # Pre-post comparison plot
+    # Pre-Post Violin Plot
     fig = go.Figure()
-    
     for group in filtered_df['GROUP'].unique():
-        group_df = filtered_df[filtered_df['GROUP'] == group]
-        
-        # Add pre-test data
+        group_data = filtered_df[filtered_df['GROUP'] == group]
         fig.add_trace(go.Violin(
-            x=['Pre-Test'] * len(group_df),
-            y=group_df[metrics[selected_metric]['pre'][0]],
+            x=['Pre-Test'] * len(group_data),
+            y=group_data[metrics[selected_metric]['pre']],
             name=f'{group} (Pre)',
             box_visible=True,
-            meanline_visible=True,
             line_color='blue' if group == 'Maitland + Conventional' else 'red'
         ))
-        
-        # Add post-test data
         fig.add_trace(go.Violin(
-            x=['Post-Test'] * len(group_df),
-            y=group_df[metrics[selected_metric]['post'][0]],
+            x=['Post-Test'] * len(group_data),
+            y=group_data[metrics[selected_metric]['post']],
             name=f'{group} (Post)',
             box_visible=True,
-            meanline_visible=True,
             line_color='lightblue' if group == 'Maitland + Conventional' else 'pink'
         ))
-    
-    fig.update_layout(
-        title=f"Pre-Test vs Post-Test {metrics[selected_metric]['title']}",
-        yaxis_title=metrics[selected_metric]['y_label'],
-        violinmode='group',
-        height=500
-    )
+    fig.update_layout(title=f"Pre vs Post {metrics[selected_metric]['title']}", height=500)
     st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    # Improvement by group
+    # Improvement by Group
     fig = px.box(
         filtered_df, 
         x='GROUP', 
         y=f'{selected_metric}_improvement',
         color='GROUP',
-        points="all",
-        title=f"Percentage Improvement in {metrics[selected_metric]['title']} by Treatment Group",
-        labels={f'{selected_metric}_improvement': 'Improvement (%)', 'GROUP': 'Treatment Group'},
+        title=f"Improvement in {metrics[selected_metric]['title']}",
+        labels={'GROUP': 'Treatment Group', f'{selected_metric}_improvement': 'Improvement (%)'},
         color_discrete_map={'Maitland + Conventional': 'blue', 'Conventional Alone': 'red'}
     )
-    fig.update_layout(height=500)
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Improvement vs duration
-    fig = px.scatter(
-        filtered_df,
-        x='DURATION',
-        y=f'{selected_metric}_improvement',
-        color='GROUP',
-        trendline="lowess",
-        title=f"Improvement vs Treatment Duration",
-        labels={'DURATION': 'Duration (weeks)', f'{selected_metric}_improvement': 'Improvement (%)'},
-        color_discrete_map={'Maitland + Conventional': 'blue', 'Conventional Alone': 'red'}
-    )
-    fig.update_layout(height=500)
     st.plotly_chart(fig, use_container_width=True)
 
 with tab3:
-    # Age vs improvement
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        fig = px.scatter(
-            filtered_df,
-            x='AGE',
-            y=f'{selected_metric}_improvement',
-            color='GROUP',
-            trendline="lowess",
-            title=f"Improvement by Age",
-            labels={'AGE': 'Age (years)', f'{selected_metric}_improvement': 'Improvement (%)'},
-            color_discrete_map={'Maitland + Conventional': 'blue', 'Conventional Alone': 'red'}
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        fig = px.box(
-            filtered_df,
-            x='GENDER',
-            y=f'{selected_metric}_improvement',
-            color='GROUP',
-            title=f"Improvement by Gender",
-            labels={'GENDER': 'Gender', f'{selected_metric}_improvement': 'Improvement (%)'},
-            color_discrete_map={'Maitland + Conventional': 'blue', 'Conventional Alone': 'red'}
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-with tab4:
-    st.subheader("Statistical Comparison Between Groups")
-    
-    # Prepare data for statistical tests
+    # Statistical Tests
+    st.subheader("🔬 Hypothesis Testing")
     group1 = filtered_df[filtered_df['GROUP'] == 'Maitland + Conventional']
     group2 = filtered_df[filtered_df['GROUP'] == 'Conventional Alone']
     
-    # Normality test
-    col1, col2 = st.columns(2)
+    # Normality Check
+    _, p1 = stats.shapiro(group1[f'{selected_metric}_improvement'])
+    _, p2 = stats.shapiro(group2[f'{selected_metric}_improvement'])
     
-    with col1:
-        st.markdown("**Normality Tests (Shapiro-Wilk)**")
-        _, p1 = stats.shapiro(group1[f'{selected_metric}_improvement'])
-        _, p2 = stats.shapiro(group2[f'{selected_metric}_improvement'])
-        
-        st.write(f"- Maitland group p-value: {p1:.4f} {'(normal)' if p1 > 0.05 else '(not normal)'}")
-        st.write(f"- Conventional group p-value: {p2:.4f} {'(normal)' if p2 > 0.05 else '(not normal)'}")
-    
-    with col2:
-        st.markdown("**Variance Equality (Levene's Test)**")
-        _, p_var = stats.levene(
+    if p1 > 0.05 and p2 > 0.05:
+        # t-test if normal
+        t_stat, p_val = stats.ttest_ind(
             group1[f'{selected_metric}_improvement'],
             group2[f'{selected_metric}_improvement']
         )
-        st.write(f"p-value: {p_var:.4f} {'(equal variances)' if p_var > 0.05 else '(unequal variances)'}")
-    
-    # Appropriate statistical test
-    if p1 > 0.05 and p2 > 0.05:  # Both normal
-        st.markdown("**Independent Samples t-test**")
-        t_stat, p_val = stats.ttest_ind(
-            group1[f'{selected_metric}_improvement'],
-            group2[f'{selected_metric}_improvement'],
-            equal_var=(p_var > 0.05)
-        )
-        test_used = "t-test"
+        test_used = "Independent t-test"
     else:
-        st.markdown("**Mann-Whitney U Test**")
+        # Mann-Whitney if non-normal
         u_stat, p_val = stats.mannwhitneyu(
             group1[f'{selected_metric}_improvement'],
             group2[f'{selected_metric}_improvement']
         )
-        test_used = "Mann-Whitney U"
+        test_used = "Mann-Whitney U Test"
     
-    st.write(f"- Test used: {test_used}")
-    st.write(f"- p-value: {p_val:.4f}")
-    st.write(f"- Significant difference: {'YES' if p_val < 0.05 else 'NO'}")
+    st.write(f"**Test Used:** {test_used}")
+    st.write(f"**p-value:** {p_val:.4f} {'(Significant)' if p_val < 0.05 else '(Not Significant)'}")
     
-    # Effect size
+    # Effect Size
     cohen_d = (group1[f'{selected_metric}_improvement'].mean() - group2[f'{selected_metric}_improvement'].mean()) / np.sqrt(
         (group1[f'{selected_metric}_improvement'].std()**2 + group2[f'{selected_metric}_improvement'].std()**2) / 2
     )
-    st.markdown("**Effect Size (Cohen's d)**")
-    st.write(f"d = {cohen_d:.2f}")
-    st.write("Interpretation:")
-    st.write("- 0.2: Small effect")
-    st.write("- 0.5: Medium effect")
-    st.write("- 0.8: Large effect")
+    st.write(f"**Effect Size (Cohen's d):** {cohen_d:.2f}")
 
-# Raw data view
-st.subheader("Filtered Data")
-st.dataframe(filtered_df, use_container_width=True)
-
-# Download button
+# ========== DATA EXPORT ==========
 st.download_button(
-    label="Download Filtered Data as CSV",
-    data=filtered_df.to_csv(index=False).encode('utf-8'),
-    file_name='filtered_treatment_data.csv',
-    mime='text/csv'
+    "📥 Download Filtered Data (CSV)",
+    filtered_df.to_csv(index=False).encode('utf-8'),
+    "knee_oa_filtered_data.csv",
+    "text/csv"
 )
