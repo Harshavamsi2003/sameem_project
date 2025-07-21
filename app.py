@@ -214,7 +214,7 @@ for i, metric in enumerate(metrics):
             
             for idx, row in filtered_df.iterrows():
                 fig.add_trace(go.Scatter(
-                    x=[metrics[metric]['pre'], metrics[metric]['post']],
+                    x=['Pre-Test', 'Post-Test'],
                     y=[row[metrics[metric]['pre']], row[metrics[metric]['post']],
                     mode='lines+markers',
                     line=dict(color='#636EFA' if row['GROUP'] == 'Maitland + Conventional' else '#EF553B', width=1),
@@ -228,7 +228,7 @@ for i, metric in enumerate(metrics):
             
             for _, group in group_means.iterrows():
                 fig.add_trace(go.Scatter(
-                    x=[metrics[metric]['pre'], metrics[metric]['post']],
+                    x=['Pre-Test', 'Post-Test'],
                     y=[group[metrics[metric]['pre']], group[metrics[metric]['post']],
                     mode='lines+markers',
                     line=dict(color='#636EFA' if group['GROUP'] == 'Maitland + Conventional' else '#EF553B', width=3),
@@ -238,13 +238,8 @@ for i, metric in enumerate(metrics):
             
             fig.update_layout(
                 title=f"Individual Patient Progress: {metrics[metric]['title']}",
-                xaxis_title="Test Period",
                 yaxis_title=f"{metrics[metric]['title']} ({metrics[metric]['unit']})",
-                xaxis=dict(
-                    tickmode='array',
-                    tickvals=[metrics[metric]['pre'], metrics[metric]['post']],
-                    ticktext=['Pre-Test', 'Post-Test']
-                )
+                showlegend=True
             )
             st.plotly_chart(fig, use_container_width=True)
             
