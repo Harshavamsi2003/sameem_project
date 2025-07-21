@@ -1,13 +1,14 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+from scipy import stats
 
-# Set page config
+# Page configuration
 st.set_page_config(
-    page_title="Osteoarthritis Treatment Analysis",
-    page_icon="🏥",
+    page_title="Knee OA Treatment Analytics",
+    page_icon="🦵",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -15,331 +16,291 @@ st.set_page_config(
 # Load data
 @st.cache_data
 def load_data():
-    # Read the Excel file
-    df = pd.read_excel("RESEARCH_DATA.xlsx")
-    
-    # Ensure column names match exactly what's in the Excel file
-    # Calculate differences between pre and post tests
-    df['AROM_DIFF'] = df['AROM_2_F'] - df['AROM_1_F']
-    df['PROM_DIFF'] = df['PROM_2_F'] - df['PROM_1_F']
-    df['VAS_DIFF'] = df['VAS_2'] - df['VAS_1']
-    df['W_P_DIFF'] = df['W_P_2'] - df['W_P_1']
-    df['W_S_DIFF'] = df['W_S_2'] - df['W_S_1']
-    df['W_D_DIFF'] = df['W_D_2'] - df['W_D_1']
-    
-    # Map group numbers to meaningful names
-    df['GROUP_NAME'] = df['GROUP'].map({1: 'Maitland + Conventional', 2: 'Conventional Alone'})
-    
-    return df
+    return pd.read_excel("RESEARCH_DATA.xlsx")
 
 df = load_data()
 
+# Data cleaning and preparation
+df['GROUP'] = df['GROUP'].map({1: 'Maitland + Conventional', 2: 'Conventional Alone'})
+
+# Define metrics
+metrics = {
+    'AROM': {
+        'pre': ['AROM_1_F', 'AROM_1_E'],
+        'post': ['AROM_2_F', 'AROM_2_E'],
+        'title': 'Active Range of Motion',
+        'y_label': 'Degrees'
+    },
+    'PROM': {
+        'pre': ['PROM_1_F', 'PROM_1_E'],
+        'post': ['PROM_2_F', 'PROM_2_E'],
+        'title': 'Passive Range of Motion',
+        'y_label': 'Degrees'
+    },
+    'VAS': {
+        'pre': ['VAS_1'],
+        'post': ['VAS_2'],
+        'title': 'Visual Analogue Scale (Pain)',
+        'y_label': 'Score (0-10)'
+    },
+    'WOMAC_P': {
+        'pre': ['W_P_1'],
+        'post': ['W_P_2'],
+        'title': 'WOMAC Pain',
+        'y_label': 'Score'
+    },
+    'WOMAC_S': {
+        'pre': ['W_S_1'],
+        'post': ['W_S_2'],
+        'title': 'WOMAC Stiffness',
+        'y_label': 'Score'
+    },
+    'WOMAC_D': {
+        'pre': ['W_D_1'],
+        'post': ['W_D_2'],
+        'title': 'WOMAC Disability',
+        'y_label': 'Score'
+    }
+}
+
+# Calculate improvement percentages
+for metric, cols in metrics.items():
+    pre_col = cols['pre'][0]  # Taking first column if multiple
+    post_col = cols['post'][0]
+    df[f'{metric}_improvement'] = ((df[post_col] - df[pre_col]) / df[pre_col]) * 100
+
 # Sidebar filters
 st.sidebar.header("Filters")
-group_filter = st.sidebar.multiselect(
-    "Select Treatment Group(s)",
-    options=df['GROUP_NAME'].unique(),
-    default=df['GROUP_NAME'].unique()
+selected_metric = st.sidebar.selectbox(
+    "Select Metric to Analyze",
+    list(metrics.keys()),
+    format_func=lambda x: metrics[x]['title']
+)
+
+age_range = st.sidebar.slider(
+    "Select Age Range",
+    min_value=int(df['AGE'].min()),
+    max_value=int(df['AGE'].max()),
+    value=(int(df['AGE'].min()), int(df['AGE'].max()))
 )
 
 gender_filter = st.sidebar.multiselect(
-    "Select Gender(s)",
+    "Filter by Gender",
     options=df['GENDER'].unique(),
     default=df['GENDER'].unique()
 )
 
-# Ensure AGE column exists before using it
-if 'AGE' in df.columns:
-    age_range = st.sidebar.slider(
-        "Select Age Range",
-        min_value=int(df['AGE'].min()),
-        max_value=int(df['AGE'].max()),
-        value=(int(df['AGE'].min()), int(df['AGE'].max()))
-    )
-else:
-    st.sidebar.warning("AGE column not found in data")
-    age_range = (0, 100)  # Default range if AGE column is missing
-
-# Ensure DURATION column exists before using it
-if 'DURATION' in df.columns:
-    duration_range = st.sidebar.slider(
-        "Select Duration Range (weeks)",
-        min_value=int(df['DURATION'].min()),
-        max_value=int(df['DURATION'].max()),
-        value=(int(df['DURATION'].min()), int(df['DURATION'].max()))
-    )
-else:
-    st.sidebar.warning("DURATION column not found in data")
-    duration_range = (0, 20)  # Default range if DURATION column is missing
+duration_filter = st.sidebar.slider(
+    "Treatment Duration (weeks)",
+    min_value=int(df['DURATION'].min()),
+    max_value=int(df['DURATION'].max()),
+    value=(int(df['DURATION'].min()), int(df['DURATION'].max()))
+)
 
 # Apply filters
-filter_conditions = [
-    df['GROUP_NAME'].isin(group_filter),
-    df['GENDER'].isin(gender_filter)
+filtered_df = df[
+    (df['AGE'] >= age_range[0]) & 
+    (df['AGE'] <= age_range[1]) &
+    (df['GENDER'].isin(gender_filter)) &
+    (df['DURATION'] >= duration_filter[0]) &
+    (df['DURATION'] <= duration_filter[1])
 ]
 
-# Only add age filter if AGE column exists
-if 'AGE' in df.columns:
-    filter_conditions.append(df['AGE'].between(age_range[0], age_range[1]))
-
-# Only add duration filter if DURATION column exists
-if 'DURATION' in df.columns:
-    filter_conditions.append(df['DURATION'].between(duration_range[0], duration_range[1]))
-
-# Combine all conditions
-if filter_conditions:
-    filtered_df = df[pd.concat(filter_conditions, axis=1).all(axis=1)]
-else:
-    filtered_df = df.copy()
-
-# Main page
-st.title("Osteoarthritis Treatment Outcomes Analysis")
+# Main content
+st.title("Knee Osteoarthritis Treatment Outcomes Dashboard")
 st.markdown("""
-This dashboard compares the effectiveness of two treatment approaches for osteoarthritis:
+Comparing outcomes between:
 - **Group 1**: Maitland mobilization + Conventional therapy
 - **Group 2**: Conventional therapy alone
 """)
 
-# Key Metrics
-st.subheader("Key Metrics Comparison")
+# Key metrics overview
+st.subheader("Overall Treatment Effectiveness")
 col1, col2, col3 = st.columns(3)
 
 with col1:
     st.metric("Total Patients", len(filtered_df))
-    if 'AGE' in filtered_df.columns:
-        st.metric("Average Age", f"{filtered_df['AGE'].mean():.1f} years")
-    else:
-        st.metric("Average Age", "Data not available")
-
+    
 with col2:
-    st.metric("Group 1 Patients", len(filtered_df[filtered_df['GROUP'] == 1]))
-    st.metric("Group 2 Patients", len(filtered_df[filtered_df['GROUP'] == 2]))
+    avg_improvement = filtered_df[f'{selected_metric}_improvement'].mean()
+    st.metric(
+        f"Avg {metrics[selected_metric]['title']} Improvement", 
+        f"{avg_improvement:.1f}%",
+        delta=f"{(avg_improvement - df[f'{selected_metric}_improvement'].mean()):.1f}% vs unfiltered"
+    )
 
 with col3:
-    if 'DURATION' in filtered_df.columns:
-        avg_duration = filtered_df['DURATION'].mean()
-        st.metric("Average Treatment Duration", f"{avg_duration:.1f} weeks")
-    else:
-        st.metric("Average Treatment Duration", "Data not available")
+    group_comparison = filtered_df.groupby('GROUP')[f'{selected_metric}_improvement'].mean()
+    st.metric(
+        "Group Difference", 
+        f"{(group_comparison['Maitland + Conventional'] - group_comparison['Conventional Alone']):.1f}%",
+        delta="Maitland vs Conventional"
+    )
 
-# Pre-Post Comparison Tabs
-st.subheader("Pre-Test vs Post-Test Comparison")
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "Active ROM", "Passive ROM", "VAS", 
-    "WOMAC Pain", "WOMAC Stiffness", "WOMAC Disability"
-])
+# Visualization section
+st.subheader(f"{metrics[selected_metric]['title']} Analysis")
+
+tab1, tab2, tab3, tab4 = st.tabs(["Pre-Post Comparison", "Improvement by Group", "Demographic Analysis", "Statistical Tests"])
 
 with tab1:
-    st.markdown("**Active Range of Motion (Flexion)**")
-    fig = make_subplots(rows=1, cols=2, subplot_titles=("Pre-Test", "Post-Test"))
+    # Pre-post comparison plot
+    fig = go.Figure()
     
-    for i, group in enumerate(filtered_df['GROUP_NAME'].unique(), 1):
-        group_data = filtered_df[filtered_df['GROUP_NAME'] == group]
-        fig.add_trace(
-            go.Box(y=group_data['AROM_1_F'], name=f"{group} Pre", marker_color='blue' if i == 1 else 'red'),
-            row=1, col=1
-        )
-        fig.add_trace(
-            go.Box(y=group_data['AROM_2_F'], name=f"{group} Post", marker_color='lightblue' if i == 1 else 'pink'),
-            row=1, col=2
-        )
+    for group in filtered_df['GROUP'].unique():
+        group_df = filtered_df[filtered_df['GROUP'] == group]
+        
+        # Add pre-test data
+        fig.add_trace(go.Violin(
+            x=['Pre-Test'] * len(group_df),
+            y=group_df[metrics[selected_metric]['pre'][0]],
+            name=f'{group} (Pre)',
+            box_visible=True,
+            meanline_visible=True,
+            line_color='blue' if group == 'Maitland + Conventional' else 'red'
+        ))
+        
+        # Add post-test data
+        fig.add_trace(go.Violin(
+            x=['Post-Test'] * len(group_df),
+            y=group_df[metrics[selected_metric]['post'][0]],
+            name=f'{group} (Post)',
+            box_visible=True,
+            meanline_visible=True,
+            line_color='lightblue' if group == 'Maitland + Conventional' else 'pink'
+        ))
     
-    fig.update_layout(height=500, showlegend=True)
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Improvement analysis
-    st.markdown("**Improvement in Active ROM**")
-    fig_diff = px.box(
-        filtered_df, 
-        x='GROUP_NAME', 
-        y='AROM_DIFF', 
-        color='GROUP_NAME',
-        labels={'AROM_DIFF': 'Improvement in Active ROM (degrees)', 'GROUP_NAME': 'Treatment Group'}
+    fig.update_layout(
+        title=f"Pre-Test vs Post-Test {metrics[selected_metric]['title']}",
+        yaxis_title=metrics[selected_metric]['y_label'],
+        violinmode='group',
+        height=500
     )
-    st.plotly_chart(fig_diff, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    st.markdown("**Passive Range of Motion (Flexion)**")
-    fig = make_subplots(rows=1, cols=2, subplot_titles=("Pre-Test", "Post-Test"))
-    
-    for i, group in enumerate(filtered_df['GROUP_NAME'].unique(), 1):
-        group_data = filtered_df[filtered_df['GROUP_NAME'] == group]
-        fig.add_trace(
-            go.Box(y=group_data['PROM_1_F'], name=f"{group} Pre", marker_color='blue' if i == 1 else 'red'),
-            row=1, col=1
-        )
-        fig.add_trace(
-            go.Box(y=group_data['PROM_2_F'], name=f"{group} Post", marker_color='lightblue' if i == 1 else 'pink'),
-            row=1, col=2
-        )
-    
-    fig.update_layout(height=500, showlegend=True)
+    # Improvement by group
+    fig = px.box(
+        filtered_df, 
+        x='GROUP', 
+        y=f'{selected_metric}_improvement',
+        color='GROUP',
+        points="all",
+        title=f"Percentage Improvement in {metrics[selected_metric]['title']} by Treatment Group",
+        labels={f'{selected_metric}_improvement': 'Improvement (%)', 'GROUP': 'Treatment Group'},
+        color_discrete_map={'Maitland + Conventional': 'blue', 'Conventional Alone': 'red'}
+    )
+    fig.update_layout(height=500)
     st.plotly_chart(fig, use_container_width=True)
     
-    st.markdown("**Improvement in Passive ROM**")
-    fig_diff = px.box(
-        filtered_df, 
-        x='GROUP_NAME', 
-        y='PROM_DIFF', 
-        color='GROUP_NAME',
-        labels={'PROM_DIFF': 'Improvement in Passive ROM (degrees)', 'GROUP_NAME': 'Treatment Group'}
+    # Improvement vs duration
+    fig = px.scatter(
+        filtered_df,
+        x='DURATION',
+        y=f'{selected_metric}_improvement',
+        color='GROUP',
+        trendline="lowess",
+        title=f"Improvement vs Treatment Duration",
+        labels={'DURATION': 'Duration (weeks)', f'{selected_metric}_improvement': 'Improvement (%)'},
+        color_discrete_map={'Maitland + Conventional': 'blue', 'Conventional Alone': 'red'}
     )
-    st.plotly_chart(fig_diff, use_container_width=True)
+    fig.update_layout(height=500)
+    st.plotly_chart(fig, use_container_width=True)
 
 with tab3:
-    st.markdown("**Visual Analog Scale (Pain)**")
-    fig = make_subplots(rows=1, cols=2, subplot_titles=("Pre-Test", "Post-Test"))
+    # Age vs improvement
+    col1, col2 = st.columns(2)
     
-    for i, group in enumerate(filtered_df['GROUP_NAME'].unique(), 1):
-        group_data = filtered_df[filtered_df['GROUP_NAME'] == group]
-        fig.add_trace(
-            go.Box(y=group_data['VAS_1'], name=f"{group} Pre", marker_color='blue' if i == 1 else 'red'),
-            row=1, col=1
+    with col1:
+        fig = px.scatter(
+            filtered_df,
+            x='AGE',
+            y=f'{selected_metric}_improvement',
+            color='GROUP',
+            trendline="lowess",
+            title=f"Improvement by Age",
+            labels={'AGE': 'Age (years)', f'{selected_metric}_improvement': 'Improvement (%)'},
+            color_discrete_map={'Maitland + Conventional': 'blue', 'Conventional Alone': 'red'}
         )
-        fig.add_trace(
-            go.Box(y=group_data['VAS_2'], name=f"{group} Post", marker_color='lightblue' if i == 1 else 'pink'),
-            row=1, col=2
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        fig = px.box(
+            filtered_df,
+            x='GENDER',
+            y=f'{selected_metric}_improvement',
+            color='GROUP',
+            title=f"Improvement by Gender",
+            labels={'GENDER': 'Gender', f'{selected_metric}_improvement': 'Improvement (%)'},
+            color_discrete_map={'Maitland + Conventional': 'blue', 'Conventional Alone': 'red'}
         )
-    
-    fig.update_layout(height=500, showlegend=True)
-    st.plotly_chart(fig, use_container_width=True)
-    
-    st.markdown("**Reduction in VAS Score**")
-    fig_diff = px.box(
-        filtered_df, 
-        x='GROUP_NAME', 
-        y='VAS_DIFF', 
-        color='GROUP_NAME',
-        labels={'VAS_DIFF': 'Reduction in VAS Score', 'GROUP_NAME': 'Treatment Group'}
-    )
-    st.plotly_chart(fig_diff, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
 
 with tab4:
-    st.markdown("**WOMAC Pain Score**")
-    fig = make_subplots(rows=1, cols=2, subplot_titles=("Pre-Test", "Post-Test"))
+    st.subheader("Statistical Comparison Between Groups")
     
-    for i, group in enumerate(filtered_df['GROUP_NAME'].unique(), 1):
-        group_data = filtered_df[filtered_df['GROUP_NAME'] == group]
-        fig.add_trace(
-            go.Box(y=group_data['W_P_1'], name=f"{group} Pre", marker_color='blue' if i == 1 else 'red'),
-            row=1, col=1
+    # Prepare data for statistical tests
+    group1 = filtered_df[filtered_df['GROUP'] == 'Maitland + Conventional']
+    group2 = filtered_df[filtered_df['GROUP'] == 'Conventional Alone']
+    
+    # Normality test
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Normality Tests (Shapiro-Wilk)**")
+        _, p1 = stats.shapiro(group1[f'{selected_metric}_improvement'])
+        _, p2 = stats.shapiro(group2[f'{selected_metric}_improvement'])
+        
+        st.write(f"- Maitland group p-value: {p1:.4f} {'(normal)' if p1 > 0.05 else '(not normal)'}")
+        st.write(f"- Conventional group p-value: {p2:.4f} {'(normal)' if p2 > 0.05 else '(not normal)'}")
+    
+    with col2:
+        st.markdown("**Variance Equality (Levene's Test)**")
+        _, p_var = stats.levene(
+            group1[f'{selected_metric}_improvement'],
+            group2[f'{selected_metric}_improvement']
         )
-        fig.add_trace(
-            go.Box(y=group_data['W_P_2'], name=f"{group} Post", marker_color='lightblue' if i == 1 else 'pink'),
-            row=1, col=2
+        st.write(f"p-value: {p_var:.4f} {'(equal variances)' if p_var > 0.05 else '(unequal variances)'}")
+    
+    # Appropriate statistical test
+    if p1 > 0.05 and p2 > 0.05:  # Both normal
+        st.markdown("**Independent Samples t-test**")
+        t_stat, p_val = stats.ttest_ind(
+            group1[f'{selected_metric}_improvement'],
+            group2[f'{selected_metric}_improvement'],
+            equal_var=(p_var > 0.05)
         )
+        test_used = "t-test"
+    else:
+        st.markdown("**Mann-Whitney U Test**")
+        u_stat, p_val = stats.mannwhitneyu(
+            group1[f'{selected_metric}_improvement'],
+            group2[f'{selected_metric}_improvement']
+        )
+        test_used = "Mann-Whitney U"
     
-    fig.update_layout(height=500, showlegend=True)
-    st.plotly_chart(fig, use_container_width=True)
+    st.write(f"- Test used: {test_used}")
+    st.write(f"- p-value: {p_val:.4f}")
+    st.write(f"- Significant difference: {'YES' if p_val < 0.05 else 'NO'}")
     
-    st.markdown("**Reduction in WOMAC Pain Score**")
-    fig_diff = px.box(
-        filtered_df, 
-        x='GROUP_NAME', 
-        y='W_P_DIFF', 
-        color='GROUP_NAME',
-        labels={'W_P_DIFF': 'Reduction in WOMAC Pain Score', 'GROUP_NAME': 'Treatment Group'}
+    # Effect size
+    cohen_d = (group1[f'{selected_metric}_improvement'].mean() - group2[f'{selected_metric}_improvement'].mean()) / np.sqrt(
+        (group1[f'{selected_metric}_improvement'].std()**2 + group2[f'{selected_metric}_improvement'].std()**2) / 2
     )
-    st.plotly_chart(fig_diff, use_container_width=True)
+    st.markdown("**Effect Size (Cohen's d)**")
+    st.write(f"d = {cohen_d:.2f}")
+    st.write("Interpretation:")
+    st.write("- 0.2: Small effect")
+    st.write("- 0.5: Medium effect")
+    st.write("- 0.8: Large effect")
 
-with tab5:
-    st.markdown("**WOMAC Stiffness Score**")
-    fig = make_subplots(rows=1, cols=2, subplot_titles=("Pre-Test", "Post-Test"))
-    
-    for i, group in enumerate(filtered_df['GROUP_NAME'].unique(), 1):
-        group_data = filtered_df[filtered_df['GROUP_NAME'] == group]
-        fig.add_trace(
-            go.Box(y=group_data['W_S_1'], name=f"{group} Pre", marker_color='blue' if i == 1 else 'red'),
-            row=1, col=1
-        )
-        fig.add_trace(
-            go.Box(y=group_data['W_S_2'], name=f"{group} Post", marker_color='lightblue' if i == 1 else 'pink'),
-            row=1, col=2
-        )
-    
-    fig.update_layout(height=500, showlegend=True)
-    st.plotly_chart(fig, use_container_width=True)
-    
-    st.markdown("**Reduction in WOMAC Stiffness Score**")
-    fig_diff = px.box(
-        filtered_df, 
-        x='GROUP_NAME', 
-        y='W_S_DIFF', 
-        color='GROUP_NAME',
-        labels={'W_S_DIFF': 'Reduction in WOMAC Stiffness Score', 'GROUP_NAME': 'Treatment Group'}
-    )
-    st.plotly_chart(fig_diff, use_container_width=True)
+# Raw data view
+st.subheader("Filtered Data")
+st.dataframe(filtered_df, use_container_width=True)
 
-with tab6:
-    st.markdown("**WOMAC Disability Score**")
-    fig = make_subplots(rows=1, cols=2, subplot_titles=("Pre-Test", "Post-Test"))
-    
-    for i, group in enumerate(filtered_df['GROUP_NAME'].unique(), 1):
-        group_data = filtered_df[filtered_df['GROUP_NAME'] == group]
-        fig.add_trace(
-            go.Box(y=group_data['W_D_1'], name=f"{group} Pre", marker_color='blue' if i == 1 else 'red'),
-            row=1, col=1
-        )
-        fig.add_trace(
-            go.Box(y=group_data['W_D_2'], name=f"{group} Post", marker_color='lightblue' if i == 1 else 'pink'),
-            row=1, col=2
-        )
-    
-    fig.update_layout(height=500, showlegend=True)
-    st.plotly_chart(fig, use_container_width=True)
-    
-    st.markdown("**Reduction in WOMAC Disability Score**")
-    fig_diff = px.box(
-        filtered_df, 
-        x='GROUP_NAME', 
-        y='W_D_DIFF', 
-        color='GROUP_NAME',
-        labels={'W_D_DIFF': 'Reduction in WOMAC Disability Score', 'GROUP_NAME': 'Treatment Group'}
-    )
-    st.plotly_chart(fig_diff, use_container_width=True)
-
-# Summary Statistics
-st.subheader("Summary Statistics by Group")
-if not filtered_df.empty:
-    summary_stats = filtered_df.groupby('GROUP_NAME').agg({
-        'AROM_DIFF': ['mean', 'std', 'min', 'max'],
-        'PROM_DIFF': ['mean', 'std', 'min', 'max'],
-        'VAS_DIFF': ['mean', 'std', 'min', 'max'],
-        'W_P_DIFF': ['mean', 'std', 'min', 'max'],
-        'W_S_DIFF': ['mean', 'std', 'min', 'max'],
-        'W_D_DIFF': ['mean', 'std', 'min', 'max']
-    }).round(2)
-
-    st.dataframe(summary_stats.style.background_gradient(cmap='Blues'))
-else:
-    st.warning("No data available after filtering")
-
-# Correlation Analysis
-st.subheader("Correlation Between Variables")
-corr_cols = []
-if 'AGE' in filtered_df.columns:
-    corr_cols.append('AGE')
-if 'DURATION' in filtered_df.columns:
-    corr_cols.append('DURATION')
-    
-corr_cols.extend([
-    'AROM_DIFF', 'PROM_DIFF', 'VAS_DIFF', 
-    'W_P_DIFF', 'W_S_DIFF', 'W_D_DIFF'
-])
-
-if len(corr_cols) > 0:
-    corr_matrix = filtered_df[corr_cols].corr()
-    fig = px.imshow(
-        corr_matrix,
-        text_auto=True,
-        aspect="auto",
-        color_continuous_scale='RdBu',
-        range_color=[-1, 1]
-    )
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.warning("Not enough columns available for correlation analysis")
-
-# Raw Data
-st.subheader("Raw Data")
-st.dataframe(filtered_df)
+# Download button
+st.download_button(
+    label="Download Filtered Data as CSV",
+    data=filtered_df.to_csv(index=False).encode('utf-8'),
+    file_name='filtered_treatment_data.csv',
+    mime='text/csv'
+)
