@@ -15,8 +15,10 @@ st.set_page_config(
 # Load data
 @st.cache_data
 def load_data():
+    # Read the Excel file
     df = pd.read_excel("RESEARCH_DATA.xlsx")
     
+    # Ensure column names match exactly what's in the Excel file
     # Calculate differences between pre and post tests
     df['AROM_DIFF'] = df['AROM_2_F'] - df['AROM_1_F']
     df['PROM_DIFF'] = df['PROM_2_F'] - df['PROM_1_F']
@@ -46,27 +48,49 @@ gender_filter = st.sidebar.multiselect(
     default=df['GENDER'].unique()
 )
 
-age_range = st.sidebar.slider(
-    "Select Age Range",
-    min_value=int(df['AGE'].min()),
-    max_value=int(df['AGE'].max()),
-    value=(int(df['AGE'].min()), int(df['AGE'].max()))
-)
+# Ensure AGE column exists before using it
+if 'AGE' in df.columns:
+    age_range = st.sidebar.slider(
+        "Select Age Range",
+        min_value=int(df['AGE'].min()),
+        max_value=int(df['AGE'].max()),
+        value=(int(df['AGE'].min()), int(df['AGE'].max()))
+    )
+else:
+    st.sidebar.warning("AGE column not found in data")
+    age_range = (0, 100)  # Default range if AGE column is missing
 
-duration_range = st.sidebar.slider(
-    "Select Duration Range (weeks)",
-    min_value=int(df['DURATION'].min()),
-    max_value=int(df['DURATION'].max()),
-    value=(int(df['DURATION'].min()), int(df['DURATION'].max()))
-)
+# Ensure DURATION column exists before using it
+if 'DURATION' in df.columns:
+    duration_range = st.sidebar.slider(
+        "Select Duration Range (weeks)",
+        min_value=int(df['DURATION'].min()),
+        max_value=int(df['DURATION'].max()),
+        value=(int(df['DURATION'].min()), int(df['DURATION'].max()))
+    )
+else:
+    st.sidebar.warning("DURATION column not found in data")
+    duration_range = (0, 20)  # Default range if DURATION column is missing
 
 # Apply filters
-filtered_df = df[
-    (df['GROUP_NAME'].isin(group_filter)) &
-    (df['GENDER'].isin(gender_filter)) &
-    (df['AGE'].between(age_range[0], age_range[1])) &
-    (df['DURATION'].between(duration_range[0], duration_range[1]))
+filter_conditions = [
+    df['GROUP_NAME'].isin(group_filter),
+    df['GENDER'].isin(gender_filter)
 ]
+
+# Only add age filter if AGE column exists
+if 'AGE' in df.columns:
+    filter_conditions.append(df['AGE'].between(age_range[0], age_range[1]))
+
+# Only add duration filter if DURATION column exists
+if 'DURATION' in df.columns:
+    filter_conditions.append(df['DURATION'].between(duration_range[0], duration_range[1]))
+
+# Combine all conditions
+if filter_conditions:
+    filtered_df = df[pd.concat(filter_conditions, axis=1).all(axis=1)]
+else:
+    filtered_df = df.copy()
 
 # Main page
 st.title("Osteoarthritis Treatment Outcomes Analysis")
@@ -82,15 +106,21 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     st.metric("Total Patients", len(filtered_df))
-    st.metric("Average Age", f"{filtered_df['AGE'].mean():.1f} years")
+    if 'AGE' in filtered_df.columns:
+        st.metric("Average Age", f"{filtered_df['AGE'].mean():.1f} years")
+    else:
+        st.metric("Average Age", "Data not available")
 
 with col2:
     st.metric("Group 1 Patients", len(filtered_df[filtered_df['GROUP'] == 1]))
     st.metric("Group 2 Patients", len(filtered_df[filtered_df['GROUP'] == 2]))
 
 with col3:
-    avg_duration = filtered_df['DURATION'].mean()
-    st.metric("Average Treatment Duration", f"{avg_duration:.1f} weeks")
+    if 'DURATION' in filtered_df.columns:
+        avg_duration = filtered_df['DURATION'].mean()
+        st.metric("Average Treatment Duration", f"{avg_duration:.1f} weeks")
+    else:
+        st.metric("Average Treatment Duration", "Data not available")
 
 # Pre-Post Comparison Tabs
 st.subheader("Pre-Test vs Post-Test Comparison")
@@ -270,32 +300,45 @@ with tab6:
 
 # Summary Statistics
 st.subheader("Summary Statistics by Group")
-summary_stats = filtered_df.groupby('GROUP_NAME').agg({
-    'AROM_DIFF': ['mean', 'std', 'min', 'max'],
-    'PROM_DIFF': ['mean', 'std', 'min', 'max'],
-    'VAS_DIFF': ['mean', 'std', 'min', 'max'],
-    'W_P_DIFF': ['mean', 'std', 'min', 'max'],
-    'W_S_DIFF': ['mean', 'std', 'min', 'max'],
-    'W_D_DIFF': ['mean', 'std', 'min', 'max']
-}).round(2)
+if not filtered_df.empty:
+    summary_stats = filtered_df.groupby('GROUP_NAME').agg({
+        'AROM_DIFF': ['mean', 'std', 'min', 'max'],
+        'PROM_DIFF': ['mean', 'std', 'min', 'max'],
+        'VAS_DIFF': ['mean', 'std', 'min', 'max'],
+        'W_P_DIFF': ['mean', 'std', 'min', 'max'],
+        'W_S_DIFF': ['mean', 'std', 'min', 'max'],
+        'W_D_DIFF': ['mean', 'std', 'min', 'max']
+    }).round(2)
 
-st.dataframe(summary_stats.style.background_gradient(cmap='Blues'))
+    st.dataframe(summary_stats.style.background_gradient(cmap='Blues'))
+else:
+    st.warning("No data available after filtering")
 
 # Correlation Analysis
 st.subheader("Correlation Between Variables")
-corr_matrix = filtered_df[[
-    'AGE', 'DURATION', 'AROM_DIFF', 'PROM_DIFF', 
-    'VAS_DIFF', 'W_P_DIFF', 'W_S_DIFF', 'W_D_DIFF'
-]].corr()
+corr_cols = []
+if 'AGE' in filtered_df.columns:
+    corr_cols.append('AGE')
+if 'DURATION' in filtered_df.columns:
+    corr_cols.append('DURATION')
+    
+corr_cols.extend([
+    'AROM_DIFF', 'PROM_DIFF', 'VAS_DIFF', 
+    'W_P_DIFF', 'W_S_DIFF', 'W_D_DIFF'
+])
 
-fig = px.imshow(
-    corr_matrix,
-    text_auto=True,
-    aspect="auto",
-    color_continuous_scale='RdBu',
-    range_color=[-1, 1]
-)
-st.plotly_chart(fig, use_container_width=True)
+if len(corr_cols) > 0:
+    corr_matrix = filtered_df[corr_cols].corr()
+    fig = px.imshow(
+        corr_matrix,
+        text_auto=True,
+        aspect="auto",
+        color_continuous_scale='RdBu',
+        range_color=[-1, 1]
+    )
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.warning("Not enough columns available for correlation analysis")
 
 # Raw Data
 st.subheader("Raw Data")
