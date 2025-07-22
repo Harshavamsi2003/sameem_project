@@ -397,254 +397,246 @@ elif page == "📊 Group Comparison":
     )
 
 
- elif page == "🔄 Pre-Post Comparison":
-        st.markdown('<div class="main-title">Pre-Post Treatment Comparison</div>', unsafe_allow_html=True)
-        
-        # Select metric for detailed comparison
-        selected_metric = st.selectbox(
-            "Select Clinical Parameter",
-            list(metrics.keys()),
-            format_func=lambda x: metrics[x]['title'],
-            key='prepost_metric'
-        )
-        
-        st.markdown('<div class="section-header">Individual Patient Changes</div>', unsafe_allow_html=True)
-        
-        # Add filters for individual patient changes
-        with st.expander("Filter Options for Individual Patient Chart"):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # Filter by improvement direction
-                show_improved = st.checkbox("Show improved patients", value=True)
-                show_worsened = st.checkbox("Show worsened patients", value=True)
-                
-            with col2:
-                # Filter by group
-                show_maitland = st.checkbox("Show Maitland group", value=True)
-                show_conventional = st.checkbox("Show Conventional group", value=True)
-        
-        # Create a connected scatter plot for pre-post values
-        fig = go.Figure()
-        
-        for group in filtered_df['GROUP'].unique():
-            # Skip if group is not selected
-            if (group == 'Maitland + Conventional' and not show_maitland) or \
-               (group == 'Conventional Alone' and not show_conventional):
-                continue
-                
-            group_data = filtered_df[filtered_df['GROUP'] == group].sort_values(metrics[selected_metric]['pre'])
-            
-            for i in range(len(group_data)):
-                change = group_data[metrics[selected_metric]['post']].iloc[i] - group_data[metrics[selected_metric]['pre']].iloc[i]
-                improved = change > 0 if metrics[selected_metric]['direction'] == 'increase' else change < 0
-                
-                # Skip if improvement status doesn't match filter
-                if (improved and not show_improved) or (not improved and not show_worsened):
-                    continue
-                    
-                fig.add_trace(go.Scatter(
-                    x=['Pre-Test', 'Post-Test'],
-                    y=[group_data[metrics[selected_metric]['pre']].iloc[i], 
-                       group_data[metrics[selected_metric]['post']].iloc[i]],
-                    mode='lines+markers',
-                    line=dict(width=1, color='#3498db' if group == 'Maitland + Conventional' else '#e74c3c'),
-                    marker=dict(size=8),
-                    showlegend=False,
-                    hoverinfo='text',
-                    hovertext=f"Patient ID: {group_data['OP_NO'].iloc[i]}<br>" +
-                             f"Age: {group_data['AGE'].iloc[i] if 'AGE' in group_data.columns else 'N/A'}<br>" +
-                             f"Gender: {group_data['GENDER'].iloc[i] if 'GENDER' in group_data.columns else 'N/A'}<br>" +
-                             f"Duration: {group_data['DURATION'].iloc[i] if 'DURATION' in group_data.columns else 'N/A'} weeks<br>" +
-                             f"Change: {change:.1f} {metrics[selected_metric]['unit']}"
-                ))
-        
-        # Add group means
-        for group in filtered_df['GROUP'].unique():
-            if (group == 'Maitland + Conventional' and not show_maitland) or \
-               (group == 'Conventional Alone' and not show_conventional):
-                continue
-                
-            group_data = filtered_df[filtered_df['GROUP'] == group]
-            fig.add_trace(go.Scatter(
-                x=['Pre-Test', 'Post-Test'],
-                y=[group_data[metrics[selected_metric]['pre']].mean(), 
-                   group_data[metrics[selected_metric]['post']].mean()],
-                mode='lines+markers',
-                line=dict(width=4, color='#0d47a1' if group == 'Maitland + Conventional' else '#b71c1c'),
-                marker=dict(size=12),
-                name=f'{group} Mean',
-                hoverinfo='text',
-                hovertext=f"{group} Group Average<br>" +
-                         f"Pre: {group_data[metrics[selected_metric]['pre']].mean():.1f}<br>" +
-                         f"Post: {group_data[metrics[selected_metric]['post']].mean():.1f}<br>" +
-                         f"Change: {group_data[metrics[selected_metric]['post']].mean() - group_data[metrics[selected_metric]['pre']].mean():.1f}"
-            ))
-        
-        fig.update_layout(
-            title=f"Individual Patient Changes in {metrics[selected_metric]['title']}",
-            yaxis_title=f"{metrics[selected_metric]['title']} ({metrics[selected_metric]['unit']})",
-            height=600,
-            hovermode='closest'
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Additional visualization - Violin plot
-        st.markdown('<div class="section-header">Distribution of Changes</div>', unsafe_allow_html=True)
-        st.markdown("Violin plots show the distribution of pre and post values with kernel density estimation.")
-        
+
+elif page == "🔄 Pre-Post Comparison":
+    st.markdown('<div class="main-title">Pre-Post Treatment Comparison</div>', unsafe_allow_html=True)
+    
+    # Select metric for detailed comparison
+    selected_metric = st.selectbox(
+        "Select Clinical Parameter",
+        list(metrics.keys()),
+        format_func=lambda x: metrics[x]['title'],
+        key='prepost_metric'
+    )
+    
+    st.markdown('<div class="section-header">Individual Patient Changes</div>', unsafe_allow_html=True)
+    
+    # Add filters for individual patient changes
+    with st.expander("Filter Options for Individual Patient Chart"):
         col1, col2 = st.columns(2)
         
         with col1:
-            # Violin plot for pre-post comparison
-            fig_violin = go.Figure()
+            # Filter by improvement direction
+            show_improved = st.checkbox("Show improved patients", value=True)
+            show_worsened = st.checkbox("Show worsened patients", value=True)
             
-            for group in filtered_df['GROUP'].unique():
-                group_data = filtered_df[filtered_df['GROUP'] == group]
-                fig_violin.add_trace(go.Violin(
-                    y=group_data[metrics[selected_metric]['pre']],
-                    name=f'{group} Pre',
-                    side='negative',
-                    line_color='#3498db' if group == 'Maitland + Conventional' else '#e74c3c',
-                    hoverinfo='y',
-                    box_visible=True,
-                    meanline_visible=True
-                ))
-                fig_violin.add_trace(go.Violin(
-                    y=group_data[metrics[selected_metric]['post']],
-                    name=f'{group} Post',
-                    side='positive',
-                    line_color='#64b5f6' if group == 'Maitland + Conventional' else '#ef9a9a',
-                    hoverinfo='y',
-                    box_visible=True,
-                    meanline_visible=True
-                ))
-            
-            fig_violin.update_layout(
-                title=f"Pre-Post Distribution in {metrics[selected_metric]['title']}",
-                yaxis_title=f"{metrics[selected_metric]['title']} ({metrics[selected_metric]['unit']})",
-                violingap=0,
-                violingroupgap=0,
-                violinmode='overlay',
-                height=500
-            )
-            st.plotly_chart(fig_violin, use_container_width=True)
-        
         with col2:
-            # Bar chart showing average change
-            avg_change = filtered_df.groupby('GROUP')[f'{selected_metric}_CHANGE'].mean().reset_index()
-            fig_bar = px.bar(
-                avg_change,
-                x='GROUP',
-                y=f'{selected_metric}_CHANGE',
-                color='GROUP',
-                title=f"Average Change in {metrics[selected_metric]['title']}",
-                color_discrete_map={'Maitland + Conventional': '#3498db', 'Conventional Alone': '#e74c3c'},
-                text=[f"{x:.1f} {metrics[selected_metric]['unit']}" for x in avg_change[f'{selected_metric}_CHANGE']]
-            )
-            fig_bar.update_layout(
-                yaxis_title=f"Change in {metrics[selected_metric]['title']} ({metrics[selected_metric]['unit']})",
-                showlegend=False
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
-        
-        # Small multiples for all metrics
-        st.markdown('<div class="section-header">All Metrics Pre-Post Comparison</div>', unsafe_allow_html=True)
-        st.markdown("Box plots showing pre and post values for all clinical metrics.")
-        
-        # Create small multiples plot
-        fig = make_subplots(
-            rows=2, 
-            cols=3,
-            subplot_titles=[metrics[metric]['title'] for metric in metrics],
-            horizontal_spacing=0.1,
-            vertical_spacing=0.2
-        )
-        
-        for i, metric in enumerate(metrics):
-            row = (i // 3) + 1
-            col = (i % 3) + 1
+            # Filter by group
+            show_maitland = st.checkbox("Show Maitland group", value=True)
+            show_conventional = st.checkbox("Show Conventional group", value=True)
+    
+    # Create a connected scatter plot for pre-post values
+    fig = go.Figure()
+    
+    for group in filtered_df['GROUP'].unique():
+        # Skip if group is not selected
+        if (group == 'Maitland + Conventional' and not show_maitland) or \
+           (group == 'Conventional Alone' and not show_conventional):
+            continue
             
-            for group in filtered_df['GROUP'].unique():
-                group_data = filtered_df[filtered_df['GROUP'] == group]
-                
-                fig.add_trace(
-                    go.Box(
-                        y=group_data[metrics[metric]['pre']],
-                        name=f'{group} Pre',
-                        marker_color='#3498db' if group == 'Maitland + Conventional' else '#e74c3c',
-                        showlegend=(i == 0),  # Only show legend for first subplot
-                        legendgroup=group
-                    ),
-                    row=row,
-                    col=col
-                )
-                
-                fig.add_trace(
-                    go.Box(
-                        y=group_data[metrics[metric]['post']],
-                        name=f'{group} Post',
-                        marker_color='#90caf9' if group == 'Maitland + Conventional' else '#ef9a9a',
-                        showlegend=(i == 0),  # Only show legend for first subplot
-                        legendgroup=group
-                    ),
-                    row=row,
-                    col=col
-                )
+        group_data = filtered_df[filtered_df['GROUP'] == group].sort_values(metrics[selected_metric]['pre'])
+        
+        for i in range(len(group_data)):
+            change = group_data[metrics[selected_metric]['post']].iloc[i] - group_data[metrics[selected_metric]['pre']].iloc[i]
+            improved = change > 0 if metrics[selected_metric]['direction'] == 'increase' else change < 0
             
-            fig.update_yaxes(title_text=metrics[metric]['unit'], row=row, col=col)
-        
-        fig.update_layout(
-            height=800,
-            title_text="Pre-Post Comparison Across All Metrics",
-            boxmode='group',
-            margin=dict(t=100)
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Improvement summary table
-        st.markdown('<div class="section-header">Improvement Summary</div>', unsafe_allow_html=True)
-        st.markdown("Summary of average changes across all metrics.")
-        
-        improvement_data = []
-        for metric in metrics:
-            for group in filtered_df['GROUP'].unique():
-                group_data = filtered_df[filtered_df['GROUP'] == group]
-                pre_mean = group_data[metrics[metric]['pre']].mean()
-                post_mean = group_data[metrics[metric]['post']].mean()
-                change = post_mean - pre_mean
-                pct_change = (change / pre_mean) * 100 if pre_mean != 0 else 0
+            # Skip if improvement status doesn't match filter
+            if (improved and not show_improved) or (not improved and not show_worsened):
+                continue
                 
-                improvement_data.append({
-                    'Metric': metrics[metric]['title'],
-                    'Group': group,
-                    'Pre Mean': pre_mean,
-                    'Post Mean': post_mean,
-                    'Change': change,
-                    '% Change': pct_change
-                })
+            fig.add_trace(go.Scatter(
+                x=['Pre-Test', 'Post-Test'],
+                y=[group_data[metrics[selected_metric]['pre']].iloc[i], 
+                   group_data[metrics[selected_metric]['post']].iloc[i]],
+                mode='lines+markers',
+                line=dict(width=1, color='#3498db' if group == 'Maitland + Conventional' else '#e74c3c'),
+                marker=dict(size=8),
+                showlegend=False,
+                hoverinfo='text',
+                hovertext=f"Patient ID: {group_data['OP_NO'].iloc[i]}<br>" +
+                         f"Age: {group_data['AGE'].iloc[i] if 'AGE' in group_data.columns else 'N/A'}<br>" +
+                         f"Gender: {group_data['GENDER'].iloc[i] if 'GENDER' in group_data.columns else 'N/A'}<br>" +
+                         f"Duration: {group_data['DURATION'].iloc[i] if 'DURATION' in group_data.columns else 'N/A'} weeks<br>" +
+                         f"Change: {change:.1f} {metrics[selected_metric]['unit']}"
+            ))
+    
+    # Add group means
+    for group in filtered_df['GROUP'].unique():
+        if (group == 'Maitland + Conventional' and not show_maitland) or \
+           (group == 'Conventional Alone' and not show_conventional):
+            continue
+            
+        group_data = filtered_df[filtered_df['GROUP'] == group]
+        fig.add_trace(go.Scatter(
+            x=['Pre-Test', 'Post-Test'],
+            y=[group_data[metrics[selected_metric]['pre']].mean(), 
+               group_data[metrics[selected_metric]['post']].mean()],
+            mode='lines+markers',
+            line=dict(width=4, color='#0d47a1' if group == 'Maitland + Conventional' else '#b71c1c'),
+            marker=dict(size=12),
+            name=f'{group} Mean',
+            hoverinfo='text',
+            hovertext=f"{group} Group Average<br>" +
+                     f"Pre: {group_data[metrics[selected_metric]['pre']].mean():.1f}<br>" +
+                     f"Post: {group_data[metrics[selected_metric]['post']].mean():.1f}<br>" +
+                     f"Change: {group_data[metrics[selected_metric]['post']].mean() - group_data[metrics[selected_metric]['pre']].mean():.1f}"
+        ))
+    
+    fig.update_layout(
+        title=f"Individual Patient Changes in {metrics[selected_metric]['title']}",
+        yaxis_title=f"{metrics[selected_metric]['title']} ({metrics[selected_metric]['unit']})",
+        height=600,
+        hovermode='closest'
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Additional visualization - Violin plot
+    st.markdown('<div class="section-header">Distribution of Changes</div>', unsafe_allow_html=True)
+    st.markdown("Violin plots show the distribution of pre and post values with kernel density estimation.")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Violin plot for pre-post comparison
+        fig_violin = go.Figure()
         
-        improvement_df = pd.DataFrame(improvement_data)
-        st.dataframe(
-            improvement_df.style.format({
-                'Pre Mean': '{:.2f}',
-                'Post Mean': '{:.2f}',
-                'Change': '{:.2f}',
-                '% Change': '{:.1f}%'
-            }).apply(lambda x: ['background: #e3f2fd' if x['Group'] == 'Maitland + Conventional' else 'background: #ffebee' 
-                              for i, v in x.items()], axis=1),
-            use_container_width=True,
-            height=600
+        for group in filtered_df['GROUP'].unique():
+            group_data = filtered_df[filtered_df['GROUP'] == group]
+            fig_violin.add_trace(go.Violin(
+                y=group_data[metrics[selected_metric]['pre']],
+                name=f'{group} Pre',
+                side='negative',
+                line_color='#3498db' if group == 'Maitland + Conventional' else '#e74c3c',
+                hoverinfo='y',
+                box_visible=True,
+                meanline_visible=True
+            ))
+            fig_violin.add_trace(go.Violin(
+                y=group_data[metrics[selected_metric]['post']],
+                name=f'{group} Post',
+                side='positive',
+                line_color='#64b5f6' if group == 'Maitland + Conventional' else '#ef9a9a',
+                hoverinfo='y',
+                box_visible=True,
+                meanline_visible=True
+            ))
+        
+        fig_violin.update_layout(
+            title=f"Pre-Post Distribution in {metrics[selected_metric]['title']}",
+            yaxis_title=f"{metrics[selected_metric]['title']} ({metrics[selected_metric]['unit']})",
+            violingap=0,
+            violingroupgap=0,
+            violinmode='overlay',
+            height=500
         )
-
-
-
-
-
-
-
-
-
+        st.plotly_chart(fig_violin, use_container_width=True)
+    
+    with col2:
+        # Bar chart showing average change
+        avg_change = filtered_df.groupby('GROUP')[f'{selected_metric}_CHANGE'].mean().reset_index()
+        fig_bar = px.bar(
+            avg_change,
+            x='GROUP',
+            y=f'{selected_metric}_CHANGE',
+            color='GROUP',
+            title=f"Average Change in {metrics[selected_metric]['title']}",
+            color_discrete_map={'Maitland + Conventional': '#3498db', 'Conventional Alone': '#e74c3c'},
+            text=[f"{x:.1f} {metrics[selected_metric]['unit']}" for x in avg_change[f'{selected_metric}_CHANGE']]
+        )
+        fig_bar.update_layout(
+            yaxis_title=f"Change in {metrics[selected_metric]['title']} ({metrics[selected_metric]['unit']})",
+            showlegend=False
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
+    
+    # Small multiples for all metrics
+    st.markdown('<div class="section-header">All Metrics Pre-Post Comparison</div>', unsafe_allow_html=True)
+    st.markdown("Box plots showing pre and post values for all clinical metrics.")
+    
+    # Create small multiples plot
+    fig = make_subplots(
+        rows=2, 
+        cols=3,
+        subplot_titles=[metrics[metric]['title'] for metric in metrics],
+        horizontal_spacing=0.1,
+        vertical_spacing=0.2
+    )
+    
+    for i, metric in enumerate(metrics):
+        row = (i // 3) + 1
+        col = (i % 3) + 1
+        
+        for group in filtered_df['GROUP'].unique():
+            group_data = filtered_df[filtered_df['GROUP'] == group]
+            
+            fig.add_trace(
+                go.Box(
+                    y=group_data[metrics[metric]['pre']],
+                    name=f'{group} Pre',
+                    marker_color='#3498db' if group == 'Maitland + Conventional' else '#e74c3c',
+                    showlegend=(i == 0),  # Only show legend for first subplot
+                    legendgroup=group
+                ),
+                row=row,
+                col=col
+            )
+            
+            fig.add_trace(
+                go.Box(
+                    y=group_data[metrics[metric]['post']],
+                    name=f'{group} Post',
+                    marker_color='#90caf9' if group == 'Maitland + Conventional' else '#ef9a9a',
+                    showlegend=(i == 0),  # Only show legend for first subplot
+                    legendgroup=group
+                ),
+                row=row,
+                col=col
+            )
+        
+        fig.update_yaxes(title_text=metrics[metric]['unit'], row=row, col=col)
+    
+    fig.update_layout(
+        height=800,
+        title_text="Pre-Post Comparison Across All Metrics",
+        boxmode='group',
+        margin=dict(t=100)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Improvement summary table
+    st.markdown('<div class="section-header">Improvement Summary</div>', unsafe_allow_html=True)
+    st.markdown("Summary of average changes across all metrics.")
+    
+    improvement_data = []
+    for metric in metrics:
+        for group in filtered_df['GROUP'].unique():
+            group_data = filtered_df[filtered_df['GROUP'] == group]
+            pre_mean = group_data[metrics[metric]['pre']].mean()
+            post_mean = group_data[metrics[metric]['post']].mean()
+            change = post_mean - pre_mean
+            pct_change = (change / pre_mean) * 100 if pre_mean != 0 else 0
+            
+            improvement_data.append({
+                'Metric': metrics[metric]['title'],
+                'Group': group,
+                'Pre Mean': pre_mean,
+                'Post Mean': post_mean,
+                'Change': change,
+                '% Change': pct_change
+            })
+    
+    improvement_df = pd.DataFrame(improvement_data)
+    st.dataframe(
+        improvement_df.style.format({
+            'Pre Mean': '{:.2f}',
+            'Post Mean': '{:.2f}',
+            'Change': '{:.2f}',
+            '% Change': '{:.1f}%'
+        }).apply(lambda x: ['background: #e3f2fd' if x['Group'] == 'Maitland + Conventional' else 'background: #ffebee' 
+                          for i, v in x.items()], axis=1),
+        use_container_width=True,
+        height=600
+    )
 
 elif page == "📈 Detailed Analysis":
     st.markdown('<div class="main-title">Detailed Metric Analysis</div>', unsafe_allow_html=True)
