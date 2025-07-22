@@ -397,7 +397,7 @@ elif page == "📊 Group Comparison":
     )
 
 
-    elif page == "🔄 Pre-Post Comparison":
+ elif page == "🔄 Pre-Post Comparison":
         st.markdown('<div class="main-title">Pre-Post Treatment Comparison</div>', unsafe_allow_html=True)
         
         # Select metric for detailed comparison
