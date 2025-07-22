@@ -815,7 +815,7 @@ elif page == "👥 Demographics":
         st.plotly_chart(fig, use_container_width=True)
 
 # ========== KEY INSIGHTS SECTION ==========
-if page != "🏠 Overview":
+if page == "📈 Detailed Analysis":
     st.markdown("---")
     st.markdown('<div class="section-header">Key Clinical Insights</div>', unsafe_allow_html=True)
     
